@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>日報ジェネレーター</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /*
+     * 日報ジェネレーター - カスタムスタイル
+     * Tailwind CSSで対応できない微調整用
+     */
+
+    /* トースト通知のアニメーション */
+    .toast {
+      animation: slideIn 0.3s ease-out, fadeOut 0.3s ease-in 2.7s forwards;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateY(-20px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    @keyframes fadeOut {
+      from {
+        opacity: 1;
+      }
+      to {
+        opacity: 0;
+      }
+    }
+
+    /* テキストエリアのリサイズを縦方向のみに制限 */
+    textarea {
+      resize: vertical;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <!-- メインコンテナ -->
+  <div class="max-w-3xl mx-auto px-4 py-8">
+
+    <!-- ヘッダー -->
+    <header class="mb-8 text-center">
+      <h1 class="text-2xl md:text-3xl font-bold text-gray-800 mb-2">日報ジェネレーター</h1>
+      <p class="text-gray-600 text-sm md:text-base">今日やったことを入力すると、丁寧な日報文を生成します</p>
+    </header>
+
+    <!-- 入力フォーム -->
+    <section class="bg-white rounded-lg shadow-md p-6 mb-6">
+      <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center">
+        <span class="w-1 h-6 bg-blue-500 rounded mr-2"></span>
+        入力
+      </h2>
+
+      <!-- 今日やったこと（必須） -->
+      <div class="mb-5">
+        <label for="tasks" class="block text-sm font-medium text-gray-700 mb-1">
+          今日やったこと <span class="text-red-500">*</span>
+        </label>
+        <textarea
+          id="tasks"
+          rows="5"
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+          placeholder="例：&#10;・APIの設計書を作成&#10;・ログイン機能の実装&#10;・コードレビュー対応"
+        ></textarea>
+        <p class="text-xs text-gray-500 mt-1">箇条書きで入力してください（各行が1項目として処理されます）</p>
+      </div>
+
+      <!-- 学び/気づき（任意） -->
+      <div class="mb-5">
+        <label for="learnings" class="block text-sm font-medium text-gray-700 mb-1">
+          学び・気づき <span class="text-gray-400 text-xs">（任意）</span>
+        </label>
+        <textarea
+          id="learnings"
+          rows="2"
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+          placeholder="例：エラーハンドリングの重要性を再認識しました"
+        ></textarea>
+      </div>
+
+      <!-- 明日の予定（任意） -->
+      <div class="mb-5">
+        <label for="tomorrow" class="block text-sm font-medium text-gray-700 mb-1">
+          明日の予定 <span class="text-gray-400 text-xs">（任意）</span>
+        </label>
+        <textarea
+          id="tomorrow"
+          rows="2"
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+          placeholder="例：&#10;・単体テストの作成&#10;・チームミーティング参加"
+        ></textarea>
+      </div>
+
+      <!-- 生成ボタン -->
+      <button
+        id="generateBtn"
+        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-md transition duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+      >
+        日報を生成する
+      </button>
+    </section>
+
+    <!-- 出力エリア -->
+    <section id="outputSection" class="bg-white rounded-lg shadow-md p-6 hidden">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-semibold text-gray-700 flex items-center">
+          <span class="w-1 h-6 bg-green-500 rounded mr-2"></span>
+          生成された日報
+        </h2>
+        <span id="charCount" class="text-sm text-gray-500">現在：約0文字</span>
+      </div>
+
+      <textarea
+        id="output"
+        rows="12"
+        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition mb-4 bg-gray-50"
+        placeholder="ここに生成された日報が表示されます"
+      ></textarea>
+
+      <!-- コピーボタン -->
+      <button
+        id="copyBtn"
+        class="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-4 rounded-md transition duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+      >
+        クリップボードにコピー
+      </button>
+    </section>
+
+    <!-- フッター -->
+    <footer class="mt-8 text-center text-xs text-gray-400">
+      <p>入力内容はブラウザに自動保存されます</p>
+    </footer>
+  </div>
+
+  <!-- トースト通知用のコンテナ -->
+  <div id="toastContainer" class="fixed top-4 right-4 z-50"></div>
+
+  <script>
+    /*
+     * ====================================
+     * 日報ジェネレーター - JavaScript
+     * ====================================
+     *
+     * 【決定事項リスト（仕様書に記載のない挙動）】
+     *
+     * 1. 文末変換のパターン：
+     *    - 「しました」「を実施しました」「を行いました」「に取り組みました」の4パターンを用意
+     *    - 交互ではなくランダムに選択（自然さを優先）
+     *
+     * 2. 文末判定のルール：
+     *    - 「です」「ます」「した」「ました」で終わる場合はそのまま採用
+     *    - 句点「。」で終わる場合もそのまま採用
+     *    - 上記以外の場合に文末変換を適用
+     *
+     * 3. 行頭記号の除去対象：
+     *    - 「・」「-」「−」「–」「*」「●」「○」「■」「□」「◆」「◇」「▪」「▫」
+     *    - 数字+ピリオド（例: "1."）も除去
+     *    - 除去後の空白（半角・全角）も削除
+     *
+     * 4. 空行の扱い：
+     *    - 入力テキスト中の空行は無視する
+     *
+     * 5. 学び・明日の予定の出力形式：
+     *    - 箇条書き形式（・付き）で出力
+     *    - 1行のみの場合も箇条書き形式で統一
+     *
+     * 6. localStorage保存のタイミング：
+     *    - 各テキストエリアのinputイベント発火時に即時保存
+     *    - デバウンスは行わない（即時性を優先）
+     *
+     * 7. コピー成功時のトースト表示時間：
+     *    - 3秒間表示後に自動で消える
+     *
+     * 8. 生成ボタン押下時の既存出力の扱い：
+     *    - 上書きする（確認ダイアログは表示しない）
+     *
+     * 9. 日付の表記：
+     *    - 日報本文には日付を含めない（提出先のフォーマットに依存するため）
+     */
+
+    // ========== DOM要素の取得 ==========
+    const tasksInput = document.getElementById('tasks');
+    const learningsInput = document.getElementById('learnings');
+    const tomorrowInput = document.getElementById('tomorrow');
+    const generateBtn = document.getElementById('generateBtn');
+    const outputSection = document.getElementById('outputSection');
+    const outputTextarea = document.getElementById('output');
+    const charCount = document.getElementById('charCount');
+    const copyBtn = document.getElementById('copyBtn');
+    const toastContainer = document.getElementById('toastContainer');
+
+    // ========== 定数定義 ==========
+    const STORAGE_KEY = 'dailyReportGenerator';
+
+    // 文末変換パターン
+    const SUFFIXES = [
+      'しました。',
+      'を実施しました。',
+      'を行いました。',
+      'に取り組みました。'
+    ];
+
+    // 除去対象の行頭記号（正規表現）
+    const BULLET_PATTERN = /^[\s　]*[・\-−–\*●○■□◆◇▪▫]\s*|^[\s　]*\d+[\.．]\s*/;
+
+    // です/ます調で終わっているかの判定パターン
+    const POLITE_ENDING_PATTERN = /(です|ます|した|ました)[。]?$/;
+
+    // ========== ユーティリティ関数 ==========
+
+    /**
+     * トースト通知を表示する
+     * @param {string} message - 表示するメッセージ
+     * @param {string} type - 'success' または 'error'
+     */
+    function showToast(message, type = 'success') {
+      const toast = document.createElement('div');
+      const bgColor = type === 'success' ? 'bg-green-600' : 'bg-red-600';
+      toast.className = `toast ${bgColor} text-white px-4 py-2 rounded-md shadow-lg mb-2`;
+      toast.textContent = message;
+      toastContainer.appendChild(toast);
+
+      // 3秒後に削除
+      setTimeout(() => {
+        toast.remove();
+      }, 3000);
+    }
+
+    /**
+     * 行頭の記号を除去する
+     * @param {string} line - 処理対象の行
+     * @returns {string} 記号を除去した行
+     */
+    function removeBulletPoint(line) {
+      return line.replace(BULLET_PATTERN, '').trim();
+    }
+
+    /**
+     * 文末がです/ます調かどうかを判定する
+     * @param {string} text - 判定対象のテキスト
+     * @returns {boolean}
+     */
+    function hasPoliteEnding(text) {
+      return POLITE_ENDING_PATTERN.test(text);
+    }
+
+    /**
+     * 文末を丁寧語に変換する
+     * @param {string} text - 変換対象のテキスト
+     * @returns {string} 変換後のテキスト
+     */
+    function convertToPoliteEnding(text) {
+      // すでに丁寧語で終わっている場合はそのまま返す
+      if (hasPoliteEnding(text)) {
+        // 句点がない場合は追加
+        if (!text.endsWith('。')) {
+          return text + '。';
+        }
+        return text;
+      }
+
+      // 句点で終わっている場合（丁寧語でない）は句点を除去してから変換
+      let cleanText = text.replace(/。$/, '');
+
+      // ランダムに文末パターンを選択
+      const suffix = SUFFIXES[Math.floor(Math.random() * SUFFIXES.length)];
+      return cleanText + suffix;
+    }
+
+    /**
+     * テキストを行ごとに分割し、空行を除去する
+     * @param {string} text - 分割対象のテキスト
+     * @returns {string[]} 行の配列
+     */
+    function splitIntoLines(text) {
+      return text
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+    }
+
+    // ========== メイン機能 ==========
+
+    /**
+     * 日報を生成する
+     */
+    function generateReport() {
+      const tasks = tasksInput.value.trim();
+
+      // 必須チェック
+      if (!tasks) {
+        alert('業務内容を入力してください');
+        tasksInput.focus();
+        return;
+      }
+
+      const learnings = learningsInput.value.trim();
+      const tomorrow = tomorrowInput.value.trim();
+
+      // 出力文を組み立てる
+      let report = '';
+
+      // 1. 挨拶
+      report += 'お疲れ様です。本日の業務日報を報告いたします。\n\n';
+
+      // 2. 業務内容
+      report += '【本日の業務内容】\n';
+      const taskLines = splitIntoLines(tasks);
+      taskLines.forEach(line => {
+        const cleanLine = removeBulletPoint(line);
+        const convertedLine = convertToPoliteEnding(cleanLine);
+        report += '・' + convertedLine + '\n';
+      });
+
+      // 3. 学び（入力がある場合のみ）
+      if (learnings) {
+        report += '\n【学び・気づき】\n';
+        const learningLines = splitIntoLines(learnings);
+        learningLines.forEach(line => {
+          const cleanLine = removeBulletPoint(line);
+          // 学びセクションはそのまま記載（文末変換しない）
+          let formattedLine = cleanLine;
+          if (!formattedLine.endsWith('。')) {
+            formattedLine += '。';
+          }
+          report += '・' + formattedLine + '\n';
+        });
+      }
+
+      // 4. 明日の予定（入力がある場合のみ）
+      if (tomorrow) {
+        report += '\n【明日の予定】\n';
+        const tomorrowLines = splitIntoLines(tomorrow);
+        tomorrowLines.forEach(line => {
+          const cleanLine = removeBulletPoint(line);
+          report += '・' + cleanLine + '\n';
+        });
+      }
+
+      // 5. 結び
+      report += '\nよろしくお願いいたします。';
+
+      // 出力エリアに表示
+      outputTextarea.value = report;
+      outputSection.classList.remove('hidden');
+      updateCharCount();
+
+      // 出力エリアまでスクロール
+      outputSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    /**
+     * 文字数カウントを更新する
+     */
+    function updateCharCount() {
+      const count = outputTextarea.value.length;
+      charCount.textContent = `現在：約${count}文字`;
+    }
+
+    /**
+     * クリップボードにコピーする
+     */
+    async function copyToClipboard() {
+      const text = outputTextarea.value;
+
+      if (!text) {
+        showToast('コピーする内容がありません', 'error');
+        return;
+      }
+
+      try {
+        // navigator.clipboard APIを試行
+        await navigator.clipboard.writeText(text);
+        showToast('コピーしました！');
+      } catch (err) {
+        // フォールバック: textarea選択 + execCommand
+        try {
+          outputTextarea.select();
+          outputTextarea.setSelectionRange(0, text.length); // モバイル対応
+          const success = document.execCommand('copy');
+
+          if (success) {
+            showToast('コピーしました！');
+          } else {
+            throw new Error('execCommand failed');
+          }
+        } catch (fallbackErr) {
+          showToast('コピーに失敗しました。手動でコピーしてください。', 'error');
+          console.error('Copy failed:', fallbackErr);
+        }
+      }
+    }
+
+    // ========== localStorage機能 ==========
+
+    /**
+     * 入力内容をlocalStorageに保存する
+     */
+    function saveToStorage() {
+      const data = {
+        tasks: tasksInput.value,
+        learnings: learningsInput.value,
+        tomorrow: tomorrowInput.value
+      };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      } catch (e) {
+        // localStorage無効時は無視
+        console.warn('localStorage is not available:', e);
+      }
+    }
+
+    /**
+     * localStorageから入力内容を復元する
+     */
+    function loadFromStorage() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const data = JSON.parse(saved);
+          tasksInput.value = data.tasks || '';
+          learningsInput.value = data.learnings || '';
+          tomorrowInput.value = data.tomorrow || '';
+        }
+      } catch (e) {
+        console.warn('Failed to load from localStorage:', e);
+      }
+    }
+
+    // ========== イベントリスナーの設定 ==========
+
+    // 生成ボタン
+    generateBtn.addEventListener('click', generateReport);
+
+    // コピーボタン
+    copyBtn.addEventListener('click', copyToClipboard);
+
+    // 出力エリアの文字数カウント更新
+    outputTextarea.addEventListener('input', updateCharCount);
+
+    // 入力フィールドの自動保存
+    [tasksInput, learningsInput, tomorrowInput].forEach(input => {
+      input.addEventListener('input', saveToStorage);
+    });
+
+    // ========== 初期化 ==========
+
+    // ページ読み込み時にlocalStorageから復元
+    document.addEventListener('DOMContentLoaded', () => {
+      loadFromStorage();
+    });
+  </script>
+</body>
+</html>
